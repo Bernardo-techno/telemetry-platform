@@ -1,0 +1,167 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Nombre de capteurs actifs",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "green", "value": 15 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "count(count by(device_id) (mqtt_consumer_value))",
+          "legendFormat": "Capteurs",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Alertes IoT actives",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "count(ALERTS{domaine=\"iot\", alertstate=\"firing\"}) OR vector(0)",
+          "legendFormat": "Alertes",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Températures par capteur",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 75 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "mqtt_consumer_value{type=\"temperature\"}",
+          "legendFormat": "{{ device_id }} ({{ location }})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Pressions par capteur",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "unit": "pressurembar" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "mqtt_consumer_value{type=\"pression\"}",
+          "legendFormat": "{{ device_id }} ({{ location }})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Vibrations par capteur",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "mqtt_consumer_value{type=\"vibration\"}",
+          "legendFormat": "{{ device_id }} ({{ location }})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Niveau batterie par capteur",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 20 },
+              { "color": "green", "value": 50 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "mqtt_consumer_value{type=\"batterie\"}",
+          "legendFormat": "{{ device_id }}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Tableau de tous les capteurs",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "expr": "mqtt_consumer_value",
+          "legendFormat": "",
+          "refId": "A",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["iot", "telemetrie", "capteurs"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "title": "IoT — Capteurs Industriels",
+  "uid": "iot-dashboard",
+  "version": 1
+}

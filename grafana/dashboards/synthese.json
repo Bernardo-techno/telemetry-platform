@@ -1,0 +1,134 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    { "title": "Infrastructure", "url": "/d/infra-dashboard", "type": "link" },
+    { "title": "IoT", "url": "/d/iot-dashboard", "type": "link" },
+    { "title": "Applicatif", "url": "/d/app-dashboard", "type": "link" }
+  ],
+  "panels": [
+    {
+      "title": "🖥️ INFRASTRUCTURE",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "title": "CPU Hôte",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 60 }, { "color": "red", "value": 85 }] } }, "overrides": [] },
+      "targets": [{ "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)", "refId": "A" }]
+    },
+    {
+      "title": "RAM Hôte",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 }] } }, "overrides": [] },
+      "targets": [{ "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100", "refId": "A" }]
+    },
+    {
+      "title": "Conteneurs actifs",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [{ "expr": "count(container_memory_usage_bytes{name!=\"\"})", "refId": "A" }]
+    },
+    {
+      "title": "Alertes Infra",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] },
+      "targets": [{ "expr": "count(ALERTS{domaine=\"infrastructure\", alertstate=\"firing\"}) OR vector(0)", "refId": "A" }]
+    },
+    {
+      "title": "📡 IoT",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+      "collapsed": false
+    },
+    {
+      "title": "Capteurs actifs",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 15 }] } }, "overrides": [] },
+      "targets": [{ "expr": "count(count by(device_id) (mqtt_consumer_value))", "refId": "A" }]
+    },
+    {
+      "title": "Température max",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "unit": "celsius", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 75 }] } }, "overrides": [] },
+      "targets": [{ "expr": "max(mqtt_consumer_value{type=\"temperature\"})", "refId": "A" }]
+    },
+    {
+      "title": "Batterie min",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 20 }, { "color": "green", "value": 50 }] } }, "overrides": [] },
+      "targets": [{ "expr": "min(mqtt_consumer_value{type=\"batterie\"})", "refId": "A" }]
+    },
+    {
+      "title": "Alertes IoT",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] },
+      "targets": [{ "expr": "count(ALERTS{domaine=\"iot\", alertstate=\"firing\"}) OR vector(0)", "refId": "A" }]
+    },
+    {
+      "title": "⚙️ APPLICATIF",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "collapsed": false
+    },
+    {
+      "title": "Requêtes/s",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [{ "expr": "sum(rate(http_requests_total[5m]))", "refId": "A" }]
+    },
+    {
+      "title": "Taux d'erreur",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 5 }] } }, "overrides": [] },
+      "targets": [{ "expr": "(sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))) * 100", "refId": "A" }]
+    },
+    {
+      "title": "Latence p95",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.5 }] } }, "overrides": [] },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "refId": "A" }]
+    },
+    {
+      "title": "Service UP/DOWN",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }] }, "overrides": [] },
+      "targets": [{ "expr": "up{job=\"microservice-demo\"}", "refId": "A" }]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["synthese", "telemetrie"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "title": "Synthèse — Vue Multi-Domaines",
+  "uid": "synthese-dashboard",
+  "version": 1
+}

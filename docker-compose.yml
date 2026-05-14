@@ -1,0 +1,198 @@
+##############################################################################
+# Plateforme de Supervision de Télémétrie — PRJ-TEL-2026-001
+# Lancement : docker compose up -d
+# Arrêt     : docker compose down
+##############################################################################
+
+services:
+
+  # =========================================================================
+  #  COUCHE SOURCES — INFRASTRUCTURE
+  # =========================================================================
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - telemetry-net
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - telemetry-net
+
+  # =========================================================================
+  #  COUCHE SOURCES — IoT
+  # =========================================================================
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    networks:
+      - telemetry-net
+
+  telegraf:
+    image: telegraf:1.32
+    container_name: telegraf
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    ports:
+      - "9273:9273"
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    networks:
+      - telemetry-net
+
+  simulateur-iot:
+    build: ./simulateur-iot
+    container_name: simulateur-iot
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=1883
+      - NB_CAPTEURS=20
+      - INTERVALLE_SECONDES=10
+    networks:
+      - telemetry-net
+
+  # =========================================================================
+  #  COUCHE SOURCES — APPLICATIF
+  # =========================================================================
+
+  microservice-demo:
+    build: ./microservice-demo
+    container_name: microservice-demo
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_NAME=service-commandes
+      - APP_ENV=production
+    networks:
+      - telemetry-net
+
+  load-generator:
+    build: ./load-generator
+    container_name: load-generator
+    restart: unless-stopped
+    depends_on:
+      - microservice-demo
+    environment:
+      - TARGET_HOST=microservice-demo
+      - TARGET_PORT=8000
+      - REQUESTS_PER_SECOND=2
+    networks:
+      - telemetry-net
+
+  # =========================================================================
+  #  COUCHE COLLECTE & ALERTING
+  # =========================================================================
+
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--storage.tsdb.retention.size=10GB'
+      - '--web.enable-lifecycle'
+    networks:
+      - telemetry-net
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+    networks:
+      - telemetry-net
+
+  pushgateway:
+    image: prom/pushgateway:v1.9.0
+    container_name: pushgateway
+    restart: unless-stopped
+    ports:
+      - "9091:9091"
+    networks:
+      - telemetry-net
+
+  # =========================================================================
+  #  COUCHE RESTITUTION
+  # =========================================================================
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-SuperSecret2026!}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - telemetry-net
+
+# =========================================================================
+#  RÉSEAU & VOLUMES
+# =========================================================================
+
+networks:
+  telemetry-net:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  mosquitto-data:
+  mosquitto-log:

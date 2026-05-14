@@ -1,0 +1,142 @@
+# =============================================================================
+# Règles d'alerting Prometheus — 10 règles couvrant les 3 domaines
+# Exigence BF-06 : au moins 8 règles actives
+# =============================================================================
+
+groups:
+
+  # =========================================================================
+  # DOMAINE INFRASTRUCTURE (4 règles)
+  # =========================================================================
+  - name: infrastructure_alerts
+    interval: 30s
+    rules:
+
+      # RÈGLE 1 — CPU élevé sur l'hôte
+      - alert: HostHighCpuUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 2m
+        labels:
+          severity: warning
+          domaine: infrastructure
+        annotations:
+          summary: "CPU élevé sur {{ $labels.instance }}"
+          description: "L'utilisation CPU dépasse 85% depuis 2 minutes (actuel : {{ $value | printf \"%.1f\" }}%)."
+
+      # RÈGLE 2 — Mémoire RAM presque pleine
+      - alert: HostHighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 2m
+        labels:
+          severity: critical
+          domaine: infrastructure
+        annotations:
+          summary: "Mémoire critique sur {{ $labels.instance }}"
+          description: "Utilisation mémoire > 90% (actuel : {{ $value | printf \"%.1f\" }}%)."
+
+      # RÈGLE 3 — Disque presque plein
+      - alert: HostDiskSpaceLow
+        expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          domaine: infrastructure
+        annotations:
+          summary: "Espace disque faible sur {{ $labels.instance }} ({{ $labels.mountpoint }})"
+          description: "Disque utilisé à {{ $value | printf \"%.1f\" }}%."
+
+      # RÈGLE 4 — Conteneur Docker redémarré récemment
+      - alert: ContainerRestarted
+        expr: increase(container_start_time_seconds[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          domaine: infrastructure
+        annotations:
+          summary: "Conteneur {{ $labels.name }} a redémarré"
+          description: "Le conteneur {{ $labels.name }} a redémarré dans les 5 dernières minutes."
+
+  # =========================================================================
+  # DOMAINE IoT (3 règles)
+  # =========================================================================
+  - name: iot_alerts
+    interval: 30s
+    rules:
+
+      # RÈGLE 5 — Température capteur trop élevée
+      - alert: IoTTemperatureHigh
+        expr: mqtt_consumer_value{type="temperature"} > 75
+        for: 1m
+        labels:
+          severity: critical
+          domaine: iot
+        annotations:
+          summary: "Température critique capteur {{ $labels.device_id }}"
+          description: "Capteur {{ $labels.device_id }} à {{ $labels.location }} : {{ $value | printf \"%.1f\" }}°C (seuil 75°C)."
+
+      # RÈGLE 6 — Batterie capteur faible
+      - alert: IoTBatteryLow
+        expr: mqtt_consumer_value{type="batterie"} < 20
+        for: 5m
+        labels:
+          severity: warning
+          domaine: iot
+        annotations:
+          summary: "Batterie faible capteur {{ $labels.device_id }}"
+          description: "Capteur {{ $labels.device_id }} : batterie à {{ $value | printf \"%.0f\" }}% (seuil 20%)."
+
+      # RÈGLE 7 — Capteur IoT silencieux (plus de données depuis 2 min)
+      - alert: IoTSensorSilent
+        expr: time() - mqtt_consumer_timestamp > 120
+        for: 1m
+        labels:
+          severity: critical
+          domaine: iot
+        annotations:
+          summary: "Capteur {{ $labels.device_id }} ne répond plus"
+          description: "Aucune donnée reçue depuis plus de 2 minutes."
+
+  # =========================================================================
+  # DOMAINE APPLICATIF (3 règles)
+  # =========================================================================
+  - name: applicatif_alerts
+    interval: 30s
+    rules:
+
+      # RÈGLE 8 — Taux d'erreur HTTP > 5%
+      - alert: AppHighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m])) by (endpoint)
+            /
+            sum(rate(http_requests_total[5m])) by (endpoint)
+          ) * 100 > 5
+        for: 2m
+        labels:
+          severity: critical
+          domaine: applicatif
+        annotations:
+          summary: "Taux d'erreur élevé sur {{ $labels.endpoint }}"
+          description: "{{ $value | printf \"%.1f\" }}% de requêtes en erreur 5xx (seuil 5%)."
+
+      # RÈGLE 9 — Latence p95 trop élevée
+      - alert: AppHighLatencyP95
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint)) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+          domaine: applicatif
+        annotations:
+          summary: "Latence élevée sur {{ $labels.endpoint }}"
+          description: "Latence p95 = {{ $value | printf \"%.3f\" }}s (seuil 0.5s)."
+
+      # RÈGLE 10 — Service down (pas de métriques)
+      - alert: AppServiceDown
+        expr: up{job="microservice-demo"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          domaine: applicatif
+        annotations:
+          summary: "Service microservice-demo injoignable"
+          description: "Prometheus ne peut pas scraper le service depuis 1 minute."

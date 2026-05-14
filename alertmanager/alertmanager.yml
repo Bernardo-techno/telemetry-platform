@@ -1,0 +1,103 @@
+# =============================================================================
+# Alertmanager — Routage des alertes par domaine et sévérité
+# Exigence BF-07 : 3 canaux de notification distincts
+# Exigence BF-10 : Déduplication et regroupement
+# =============================================================================
+
+global:
+  resolve_timeout: 5m
+
+# =============================================================================
+# Routage hiérarchique
+# =============================================================================
+route:
+  # Regroupement par défaut : alertname + domaine
+  group_by: ['alertname', 'domaine']
+  group_wait: 30s           # Attendre 30s pour regrouper les alertes similaires
+  group_interval: 5m        # Intervalle entre deux notifications du même groupe
+  repeat_interval: 4h       # Ne pas respammer avant 4h si non résolue
+  receiver: 'default-webhook'
+
+  # Routes spécifiques par domaine
+  routes:
+    # Canal 1 : Alertes infrastructure → webhook infra
+    - match:
+        domaine: infrastructure
+      receiver: 'infra-webhook'
+      group_by: ['alertname', 'instance']
+
+    # Canal 2 : Alertes IoT → webhook IoT
+    - match:
+        domaine: iot
+      receiver: 'iot-webhook'
+      group_by: ['alertname', 'device_id']
+
+    # Canal 3 : Alertes applicatives → webhook applicatif
+    - match:
+        domaine: applicatif
+      receiver: 'app-webhook'
+      group_by: ['alertname', 'endpoint']
+
+    # Alertes critiques tous domaines → canal prioritaire
+    - match:
+        severity: critical
+      receiver: 'critical-webhook'
+      group_wait: 10s
+      continue: true         # Continue vers le canal domaine aussi
+
+# =============================================================================
+# Inhibitions — empêcher les alertes en cascade
+# =============================================================================
+inhibit_rules:
+  # Si un hôte est down, ne pas alerter sur les métriques de cet hôte
+  - source_match:
+      alertname: 'AppServiceDown'
+    target_match:
+      domaine: 'applicatif'
+    target_match_re:
+      alertname: 'AppHigh.*'
+    equal: ['instance']
+
+# =============================================================================
+# Récepteurs (webhooks — remplaçables par Slack, email, PagerDuty...)
+# =============================================================================
+receivers:
+  - name: 'default-webhook'
+    webhook_configs:
+      - url: 'http://alertmanager:9093/api/v2/alerts'
+        send_resolved: true
+
+  - name: 'infra-webhook'
+    webhook_configs:
+      - url: 'http://alertmanager:9093/api/v2/alerts'
+        send_resolved: true
+
+  - name: 'iot-webhook'
+    webhook_configs:
+      - url: 'http://alertmanager:9093/api/v2/alerts'
+        send_resolved: true
+
+  - name: 'app-webhook'
+    webhook_configs:
+      - url: 'http://alertmanager:9093/api/v2/alerts'
+        send_resolved: true
+
+  - name: 'critical-webhook'
+    webhook_configs:
+      - url: 'http://alertmanager:9093/api/v2/alerts'
+        send_resolved: true
+
+# =============================================================================
+# NOTE : En production, remplacer les webhooks par de vrais canaux :
+#
+#  - name: 'slack-infra'
+#    slack_configs:
+#      - api_url: 'https://hooks.slack.com/services/XXX/YYY/ZZZ'
+#        channel: '#infra-alerts'
+#
+#  - name: 'email-critical'
+#    email_configs:
+#      - to: 'sre-team@example.com'
+#        from: 'alertmanager@example.com'
+#        smarthost: 'smtp.example.com:587'
+# =============================================================================

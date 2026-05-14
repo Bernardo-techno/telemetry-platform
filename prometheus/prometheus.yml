@@ -1,0 +1,83 @@
+# =============================================================================
+# Prometheus — Configuration principale
+# =============================================================================
+
+global:
+  scrape_interval: 15s          # Fréquence de collecte par défaut
+  evaluation_interval: 30s      # Fréquence d'évaluation des règles d'alerting
+  scrape_timeout: 10s
+
+# Lien vers Alertmanager
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Fichiers de règles d'alerting
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
+# =============================================================================
+# Cibles de scraping — organisées par domaine
+# =============================================================================
+
+scrape_configs:
+
+  # --- Prometheus se surveille lui-même (observabilité interne) ---
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          domaine: 'plateforme'
+
+  # --- DOMAINE 1 : INFRASTRUCTURE ---
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          domaine: 'infrastructure'
+          role: 'hote-linux'
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          domaine: 'infrastructure'
+          role: 'conteneurs-docker'
+
+  # --- DOMAINE 2 : IoT (via Telegraf) ---
+
+  - job_name: 'telegraf-iot'
+    static_configs:
+      - targets: ['telegraf:9273']
+        labels:
+          domaine: 'iot'
+          role: 'capteurs'
+
+  # --- DOMAINE 3 : APPLICATIF ---
+
+  - job_name: 'microservice-demo'
+    static_configs:
+      - targets: ['microservice-demo:8000']
+        labels:
+          domaine: 'applicatif'
+          role: 'service-commandes'
+
+  # --- PUSHGATEWAY (jobs batch) ---
+
+  - job_name: 'pushgateway'
+    honor_labels: true
+    static_configs:
+      - targets: ['pushgateway:9091']
+        labels:
+          domaine: 'plateforme'
+
+  # --- ALERTMANAGER ---
+
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
+        labels:
+          domaine: 'plateforme'
