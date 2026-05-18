@@ -1,0 +1,25 @@
+name: Déploiement Télémétrie
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Déployer sur VM Azure
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Déployer via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            cd ~/telemetry-platform
+            git pull origin main
+            docker compose up -d --build
+            echo "--- État des services ---"
+            docker compose ps
+            echo "--- Déploiement terminé ---"
