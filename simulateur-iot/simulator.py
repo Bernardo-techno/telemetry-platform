@@ -101,6 +101,8 @@ def generer_capteurs(n):
             "en_panne": False,          # Simulation de panne
             "panne_countdown": 0,       # Cycles restants avant reprise
             "charge_en_cours": False,   # Batterie en recharge
+            "surchauffe": False,        # Surchauffe persistante
+            "surchauffe_countdown": 0,  # Cycles restants de surchauffe
         })
     return capteurs
 
@@ -146,10 +148,18 @@ def generer_valeur(capteur, heure):
             valeur += amplitude * 0.4
         # Bruit réaliste (petites variations)
         valeur += random.gauss(0, 1.5)
-        # 3% de chance de surchauffe (incident)
-        if random.random() < 0.03 and machine_active:
+        # Surchauffe persistante (dure 12-30 cycles = 2-5 min)
+        if capteur["surchauffe"]:
+            valeur = random.uniform(78, 92)
+            capteur["surchauffe_countdown"] -= 1
+            if capteur["surchauffe_countdown"] <= 0:
+                capteur["surchauffe"] = False
+                logger.info(f"🔥 SURCHAUFFE terminée : {capteur['id']}")
+        elif random.random() < 0.02 and machine_active:
+            capteur["surchauffe"] = True
+            capteur["surchauffe_countdown"] = random.randint(12, 30)
             valeur = random.uniform(78, 95)
-            logger.warning(f"🔥 SURCHAUFFE : {capteur['id']} → {valeur:.1f}°C")
+            logger.warning(f"🔥 SURCHAUFFE : {capteur['id']} → {valeur:.1f}°C (durée ~{capteur['surchauffe_countdown']*10}s)")
         # Lisser avec la valeur précédente
         if capteur["last_value"] is not None:
             valeur = capteur["last_value"] * 0.7 + valeur * 0.3
@@ -189,8 +199,8 @@ def generer_valeur(capteur, heure):
         drain = random.uniform(0.05, 0.2)
         capteur["batterie"] -= drain
 
-        # Recharge automatique quand batterie < 10%
-        if capteur["batterie"] < 10 and not capteur["charge_en_cours"]:
+        # Recharge automatique quand batterie < 3% (laisse le temps aux alertes)
+        if capteur["batterie"] < 3 and not capteur["charge_en_cours"]:
             capteur["charge_en_cours"] = True
             logger.info(f"🔋 RECHARGE démarrée : {capteur['id']} ({capteur['batterie']:.1f}%)")
 
