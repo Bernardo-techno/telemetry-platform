@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Simulateur de capteurs IoT
-Publie des mesures MQTT réalistes sur le broker Mosquitto.
-Types de capteurs : température, pression, vibration, batterie.
+Simulateur de capteurs IoT — Version intelligente
+Comportements réalistes : cycles jour/nuit, corrélation machine,
+pannes simulées, recharge batterie, scénarios d'incidents.
 """
 
 import paho.mqtt.client as mqtt
 import json
 import time
 import random
+import math
 import os
 import logging
 import signal
@@ -27,8 +28,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("simulateur-iot")
 
-# ── Gestion de l'arrêt propre ─────────────────────────────────────────────
-
 running = True
 
 def signal_handler(sig, frame):
@@ -39,72 +38,183 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
 
+
+# ── Profils de zones ──────────────────────────────────────────────────────
+# Chaque zone a un comportement différent
+
+ZONE_PROFILES = {
+    "usine_nord": {
+        "description": "Production lourde — machines industrielles",
+        "temp_base": 55, "temp_amplitude": 15,
+        "pression_base": 7.0, "pression_bruit": 0.5,
+        "vibration_base": 2.5, "vibration_bruit": 0.8,
+        "machine_cycle": True,   # Température et vibration corrélées
+    },
+    "usine_sud": {
+        "description": "Production légère — assemblage",
+        "temp_base": 35, "temp_amplitude": 8,
+        "pression_base": 4.0, "pression_bruit": 0.3,
+        "vibration_base": 1.0, "vibration_bruit": 0.4,
+        "machine_cycle": True,
+    },
+    "entrepot_A": {
+        "description": "Stockage climatisé — température stable",
+        "temp_base": 20, "temp_amplitude": 3,
+        "pression_base": 1.0, "pression_bruit": 0.1,
+        "vibration_base": 0.2, "vibration_bruit": 0.1,
+        "machine_cycle": False,
+    },
+    "entrepot_B": {
+        "description": "Stockage froid — chambre froide",
+        "temp_base": 5, "temp_amplitude": 2,
+        "pression_base": 1.0, "pression_bruit": 0.1,
+        "vibration_base": 0.3, "vibration_bruit": 0.1,
+        "machine_cycle": False,
+    },
+    "site_exterieur": {
+        "description": "Extérieur — capteurs météo",
+        "temp_base": 22, "temp_amplitude": 12,
+        "pression_base": 1.013, "pression_bruit": 0.05,
+        "vibration_base": 0.5, "vibration_bruit": 0.3,
+        "machine_cycle": False,
+    },
+}
+
+
 # ── Génération des capteurs ───────────────────────────────────────────────
 
 TYPES_CAPTEURS = ["temperature", "pression", "vibration", "batterie"]
-LOCATIONS = ["usine_nord", "usine_sud", "entrepot_A", "entrepot_B", "site_exterieur"]
 
 def generer_capteurs(n):
-    """Crée une liste de n capteurs avec des propriétés aléatoires."""
+    """Crée n capteurs avec des profils de zone réalistes."""
+    zones = list(ZONE_PROFILES.keys())
     capteurs = []
     for i in range(1, n + 1):
         type_capteur = TYPES_CAPTEURS[(i - 1) % len(TYPES_CAPTEURS)]
+        zone = zones[(i - 1) // 4 % len(zones)]  # 4 capteurs par zone
         capteurs.append({
             "id": f"capteur_{i:03d}",
-            "location": random.choice(LOCATIONS),
+            "location": zone,
             "type": type_capteur,
-            "batterie": random.uniform(50, 100),  # État initial de la batterie
+            "batterie": random.uniform(60, 100),
+            "last_value": None,        # Pour lisser les variations
+            "en_panne": False,          # Simulation de panne
+            "panne_countdown": 0,       # Cycles restants avant reprise
+            "charge_en_cours": False,   # Batterie en recharge
         })
     return capteurs
 
 
-def generer_valeur(capteur):
-    """Génère une valeur réaliste selon le type de capteur."""
+def get_heure_simulee():
+    """Retourne une heure simulée (0-24) pour les cycles jour/nuit.
+    Compresse 24h sur 20 minutes pour voir les variations rapidement."""
+    return (time.time() % 1200) / 1200 * 24
+
+
+def generer_valeur(capteur, heure):
+    """Génère une valeur réaliste basée sur la zone, l'heure et l'historique."""
+    zone = ZONE_PROFILES[capteur["location"]]
     t = capteur["type"]
 
+    # ── Simulation de panne (2% de chance par cycle) ──
+    if not capteur["en_panne"] and random.random() < 0.002:
+        capteur["en_panne"] = True
+        capteur["panne_countdown"] = random.randint(6, 18)  # 1-3 min de panne
+        logger.warning(f"⚡ PANNE simulée : {capteur['id']} ({t} @ {capteur['location']})")
+        return None  # Pas de données = capteur silencieux
+
+    if capteur["en_panne"]:
+        capteur["panne_countdown"] -= 1
+        if capteur["panne_countdown"] <= 0:
+            capteur["en_panne"] = False
+            logger.info(f"✅ REPRISE : {capteur['id']} est de retour en ligne")
+        return None  # Toujours en panne
+
+    # ── Cycle jour/nuit (sinusoïdal) ──
+    cycle_jour = math.sin((heure - 6) / 24 * 2 * math.pi)  # Max à 12h, min à 0h
+
+    # ── Cycle machine (on/off selon l'heure) ──
+    machine_active = 6 <= heure <= 22 if zone["machine_cycle"] else True
+
     if t == "temperature":
-        # Température entre 15°C et 90°C avec pics occasionnels
-        base = random.gauss(45, 15)
-        # 5% de chance d'un pic de chaleur (pour déclencher des alertes)
-        if random.random() < 0.05:
-            base = random.uniform(76, 95)
-        return round(max(10, min(100, base)), 2)
+        base = zone["temp_base"]
+        amplitude = zone["temp_amplitude"]
+        # Température suit le cycle jour/nuit
+        valeur = base + amplitude * cycle_jour * 0.5
+        # Si machine active, la température monte
+        if zone["machine_cycle"] and machine_active:
+            valeur += amplitude * 0.4
+        # Bruit réaliste (petites variations)
+        valeur += random.gauss(0, 1.5)
+        # 3% de chance de surchauffe (incident)
+        if random.random() < 0.03 and machine_active:
+            valeur = random.uniform(78, 95)
+            logger.warning(f"🔥 SURCHAUFFE : {capteur['id']} → {valeur:.1f}°C")
+        # Lisser avec la valeur précédente
+        if capteur["last_value"] is not None:
+            valeur = capteur["last_value"] * 0.7 + valeur * 0.3
+        capteur["last_value"] = valeur
+        return round(max(-10, min(100, valeur)), 2)
 
     elif t == "pression":
-        # Pression entre 1 et 10 bar
-        return round(random.gauss(5.5, 1.5), 2)
+        base = zone["pression_base"]
+        bruit = zone["pression_bruit"]
+        valeur = base + random.gauss(0, bruit)
+        # Pression augmente légèrement quand machines actives
+        if zone["machine_cycle"] and machine_active:
+            valeur += 1.5
+        if capteur["last_value"] is not None:
+            valeur = capteur["last_value"] * 0.8 + valeur * 0.2
+        capteur["last_value"] = valeur
+        return round(max(0.5, valeur), 2)
 
     elif t == "vibration":
-        # Vibration entre 0.0 et 5.0 mm/s
-        base = random.gauss(1.5, 0.8)
-        # Pic occasionnel
-        if random.random() < 0.03:
-            base = random.uniform(4.0, 6.0)
-        return round(max(0.0, base), 3)
+        base = zone["vibration_base"]
+        bruit = zone["vibration_bruit"]
+        if zone["machine_cycle"] and machine_active:
+            valeur = base + abs(random.gauss(0, bruit))
+            # 2% de vibration anormale
+            if random.random() < 0.02:
+                valeur = random.uniform(4.5, 7.0)
+                logger.warning(f"⚠️ VIBRATION anormale : {capteur['id']} → {valeur:.2f} mm/s")
+        else:
+            valeur = 0.1 + abs(random.gauss(0, 0.1))
+        if capteur["last_value"] is not None:
+            valeur = capteur["last_value"] * 0.6 + valeur * 0.4
+        capteur["last_value"] = valeur
+        return round(max(0.0, valeur), 3)
 
     elif t == "batterie":
-        # La batterie diminue lentement
-        capteur["batterie"] = max(5, capteur["batterie"] - random.uniform(0, 0.3))
+        # Décharge lente
+        drain = random.uniform(0.05, 0.2)
+        capteur["batterie"] -= drain
+
+        # Recharge automatique quand batterie < 10%
+        if capteur["batterie"] < 10 and not capteur["charge_en_cours"]:
+            capteur["charge_en_cours"] = True
+            logger.info(f"🔋 RECHARGE démarrée : {capteur['id']} ({capteur['batterie']:.1f}%)")
+
+        if capteur["charge_en_cours"]:
+            capteur["batterie"] += random.uniform(1.0, 3.0)
+            if capteur["batterie"] >= 95:
+                capteur["charge_en_cours"] = False
+                logger.info(f"🔋 RECHARGE terminée : {capteur['id']} (100%)")
+                capteur["batterie"] = 100
+
+        capteur["batterie"] = max(0, min(100, capteur["batterie"]))
         return round(capteur["batterie"], 1)
 
     return 0.0
 
 
 def get_unite(type_capteur):
-    """Retourne l'unité de mesure pour chaque type."""
-    unites = {
-        "temperature": "°C",
-        "pression": "bar",
-        "vibration": "mm/s",
-        "batterie": "%"
-    }
-    return unites.get(type_capteur, "")
+    return {"temperature": "°C", "pression": "bar",
+            "vibration": "mm/s", "batterie": "%"}.get(type_capteur, "")
 
 
 # ── Boucle principale ────────────────────────────────────────────────────
 
 def main():
-    # Connexion MQTT avec retry
     client = mqtt.Client(client_id="simulateur-iot", protocol=mqtt.MQTTv311)
 
     logger.info(f"Connexion au broker MQTT {MQTT_HOST}:{MQTT_PORT}...")
@@ -124,17 +234,29 @@ def main():
         logger.error("Impossible de se connecter au broker MQTT. Abandon.")
         sys.exit(1)
 
-    # Créer les capteurs
     capteurs = generer_capteurs(NB_CAPTEURS)
-    logger.info(f"{len(capteurs)} capteurs simulés créés.")
-    for c in capteurs:
-        logger.info(f"  → {c['id']} | type={c['type']} | location={c['location']}")
+    logger.info(f"{'='*60}")
+    logger.info(f"  {len(capteurs)} capteurs simulés — Mode intelligent")
+    logger.info(f"{'='*60}")
+    for zone, profil in ZONE_PROFILES.items():
+        nb = sum(1 for c in capteurs if c["location"] == zone)
+        logger.info(f"  📍 {zone} ({nb} capteurs) — {profil['description']}")
+    logger.info(f"{'='*60}")
 
-    # Boucle d'envoi
     compteur = 0
+    publiees = 0
+    pannes = 0
+
     while running:
+        heure = get_heure_simulee()
+        cycle_publiees = 0
+
         for capteur in capteurs:
-            valeur = generer_valeur(capteur)
+            valeur = generer_valeur(capteur, heure)
+
+            if valeur is None:
+                pannes += 1
+                continue  # Capteur en panne → pas de publication
 
             message = {
                 "device_id": capteur["id"],
@@ -147,17 +269,25 @@ def main():
 
             topic = f"sensors/{capteur['id']}/telemetry"
             client.publish(topic, json.dumps(message), qos=0)
+            cycle_publiees += 1
 
+        publiees += cycle_publiees
         compteur += 1
-        if compteur % 6 == 0:  # Log toutes les minutes environ
-            logger.info(f"Cycle #{compteur} — {NB_CAPTEURS} mesures publiées.")
+
+        if compteur % 6 == 0:
+            en_panne = sum(1 for c in capteurs if c["en_panne"])
+            en_charge = sum(1 for c in capteurs if c["charge_en_cours"])
+            logger.info(
+                f"Cycle #{compteur} | Heure simulée: {heure:.1f}h | "
+                f"Publiées: {cycle_publiees}/{NB_CAPTEURS} | "
+                f"En panne: {en_panne} | En recharge: {en_charge}"
+            )
 
         time.sleep(INTERVALLE)
 
-    # Nettoyage
     client.loop_stop()
     client.disconnect()
-    logger.info("Simulateur arrêté proprement.")
+    logger.info(f"Arrêté. Total: {publiees} mesures publiées, {pannes} pannes simulées.")
 
 
 if __name__ == "__main__":
