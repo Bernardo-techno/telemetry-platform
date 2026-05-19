@@ -122,6 +122,131 @@
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }] }, "overrides": [] },
       "targets": [{ "expr": "up{job=\"microservice-demo\"}", "refId": "A" }]
+    },
+    {
+      "title": "🚨 ALERTES ACTIVES",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "collapsed": false
+    },
+    {
+      "title": "Alertes en cours — Détails",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "expr": "ALERTS{alertstate=\"firing\"}",
+          "refId": "A",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "alertstate": true,
+              "Value": true,
+              "job": true
+            },
+            "renameByName": {
+              "alertname": "Alerte",
+              "domaine": "Domaine",
+              "severity": "Sévérité",
+              "instance": "Instance",
+              "name": "Conteneur",
+              "device_id": "Capteur",
+              "location": "Zone",
+              "endpoint": "Endpoint",
+              "type": "Type"
+            },
+            "indexByName": {
+              "alertname": 0,
+              "domaine": 1,
+              "severity": 2,
+              "instance": 3,
+              "name": 4,
+              "device_id": 5,
+              "location": 6,
+              "endpoint": 7
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "displayMode": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Sévérité" },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "critical": { "text": "🔴 CRITIQUE", "color": "red" }, "warning": { "text": "🟡 ATTENTION", "color": "orange" } } }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Alerte" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": {
+                    "HostHighCpuUsage": { "text": "CPU hôte élevé (>85%)" },
+                    "HostHighMemoryUsage": { "text": "Mémoire hôte critique (>90%)" },
+                    "HostDiskSpaceLow": { "text": "Espace disque faible (>85%)" },
+                    "ContainerRestarted": { "text": "Conteneur redémarré" },
+                    "ContainerHighCpuUsage": { "text": "CPU conteneur élevé (>80%)" },
+                    "ContainerHighMemoryUsage": { "text": "Mémoire conteneur élevée (>500Mo)" },
+                    "ContainerDown": { "text": "Conteneur arrêté" },
+                    "IoTTemperatureHigh": { "text": "Température capteur critique (>75°C)" },
+                    "IoTBatteryLow": { "text": "Batterie capteur faible (<20%)" },
+                    "IoTSensorSilent": { "text": "Capteur silencieux (>2min)" },
+                    "AppHighErrorRate": { "text": "Taux d'erreur HTTP élevé (>5%)" },
+                    "AppHighLatencyP95": { "text": "Latence p95 élevée (>0.5s)" },
+                    "AppServiceDown": { "text": "Service microservice DOWN" }
+                  } }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Domaine" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": {
+                    "infrastructure": { "text": "🖥️ Infrastructure" },
+                    "iot": { "text": "📡 IoT" },
+                    "applicatif": { "text": "⚙️ Applicatif" }
+                  } }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Sévérité", "desc": true }],
+        "footer": { "show": true, "countRows": true, "reducer": ["count"] }
+      }
     }
   ],
   "schemaVersion": 39,
