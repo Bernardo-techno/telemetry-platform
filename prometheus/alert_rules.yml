@@ -1,12 +1,12 @@
 # =============================================================================
-# Règles d'alerting Prometheus — 10 règles couvrant les 3 domaines
+# Règles d'alerting Prometheus — 13 règles couvrant les 3 domaines
 # Exigence BF-06 : au moins 8 règles actives
 # =============================================================================
 
 groups:
 
   # =========================================================================
-  # DOMAINE INFRASTRUCTURE (4 règles)
+  # DOMAINE INFRASTRUCTURE (7 règles)
   # =========================================================================
   - name: infrastructure_alerts
     interval: 30s
@@ -56,6 +56,39 @@ groups:
           summary: "Conteneur {{ $labels.name }} a redémarré"
           description: "Le conteneur {{ $labels.name }} a redémarré dans les 5 dernières minutes."
 
+      # RÈGLE 5 — CPU élevé sur un conteneur (cAdvisor)
+      - alert: ContainerHighCpuUsage
+        expr: sum(rate(container_cpu_usage_seconds_total{name!="",image!=""}[5m])) by (name) * 100 > 80
+        for: 2m
+        labels:
+          severity: warning
+          domaine: infrastructure
+        annotations:
+          summary: "CPU élevé sur le conteneur {{ $labels.name }}"
+          description: "Le conteneur {{ $labels.name }} utilise {{ $value | printf \"%.1f\" }}% de CPU depuis 2 minutes."
+
+      # RÈGLE 6 — Mémoire élevée sur un conteneur (cAdvisor)
+      - alert: ContainerHighMemoryUsage
+        expr: container_memory_working_set_bytes{name!="",image!=""} > 524288000
+        for: 2m
+        labels:
+          severity: warning
+          domaine: infrastructure
+        annotations:
+          summary: "Mémoire élevée sur le conteneur {{ $labels.name }}"
+          description: "Le conteneur {{ $labels.name }} utilise {{ $value | humanize }}B de mémoire (seuil 500 Mo)."
+
+      # RÈGLE 7 — Conteneur arrêté (cAdvisor)
+      - alert: ContainerDown
+        expr: time() - container_last_seen{name!="",image!=""} > 60
+        for: 1m
+        labels:
+          severity: critical
+          domaine: infrastructure
+        annotations:
+          summary: "Conteneur {{ $labels.name }} arrêté"
+          description: "Le conteneur {{ $labels.name }} n'est plus vu par cAdvisor depuis plus de 60 secondes."
+
   # =========================================================================
   # DOMAINE IoT (3 règles)
   # =========================================================================
@@ -63,7 +96,7 @@ groups:
     interval: 30s
     rules:
 
-      # RÈGLE 5 — Température capteur trop élevée
+      # RÈGLE 8 — Température capteur trop élevée
       - alert: IoTTemperatureHigh
         expr: mqtt_consumer_value{type="temperature"} > 75
         for: 1m
@@ -74,7 +107,7 @@ groups:
           summary: "Température critique capteur {{ $labels.device_id }}"
           description: "Capteur {{ $labels.device_id }} à {{ $labels.location }} : {{ $value | printf \"%.1f\" }}°C (seuil 75°C)."
 
-      # RÈGLE 6 — Batterie capteur faible
+      # RÈGLE 9 — Batterie capteur faible
       - alert: IoTBatteryLow
         expr: mqtt_consumer_value{type="batterie"} < 20
         for: 5m
@@ -85,7 +118,7 @@ groups:
           summary: "Batterie faible capteur {{ $labels.device_id }}"
           description: "Capteur {{ $labels.device_id }} : batterie à {{ $value | printf \"%.0f\" }}% (seuil 20%)."
 
-      # RÈGLE 7 — Capteur IoT silencieux (plus de données depuis 2 min)
+      # RÈGLE 10 — Capteur IoT silencieux (plus de données depuis 2 min)
       - alert: IoTSensorSilent
         expr: time() - mqtt_consumer_timestamp > 120
         for: 1m
@@ -103,7 +136,7 @@ groups:
     interval: 30s
     rules:
 
-      # RÈGLE 8 — Taux d'erreur HTTP > 5%
+      # RÈGLE 11 — Taux d'erreur HTTP > 5%
       - alert: AppHighErrorRate
         expr: |
           (
@@ -119,7 +152,7 @@ groups:
           summary: "Taux d'erreur élevé sur {{ $labels.endpoint }}"
           description: "{{ $value | printf \"%.1f\" }}% de requêtes en erreur 5xx (seuil 5%)."
 
-      # RÈGLE 9 — Latence p95 trop élevée
+      # RÈGLE 12 — Latence p95 trop élevée
       - alert: AppHighLatencyP95
         expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint)) > 0.5
         for: 2m
@@ -130,7 +163,7 @@ groups:
           summary: "Latence élevée sur {{ $labels.endpoint }}"
           description: "Latence p95 = {{ $value | printf \"%.3f\" }}s (seuil 0.5s)."
 
-      # RÈGLE 10 — Service down (pas de métriques)
+      # RÈGLE 13 — Service down (pas de métriques)
       - alert: AppServiceDown
         expr: up{job="microservice-demo"} == 0
         for: 1m
