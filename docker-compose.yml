@@ -68,13 +68,21 @@ services:
       - mosquitto-log:/mosquitto/log
     networks:
       - telemetry-net
+    # Ajout du Healthcheck : On s'abonne à un topic interne pour vérifier que le broker répond
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-h", "localhost", "-p", "1883", "-t", "$$SYS/broker/version", "-C", "1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   telegraf:
     image: telegraf:1.32
     container_name: telegraf
     restart: unless-stopped
     depends_on:
-      - mosquitto
+      mosquitto:
+        condition: service_healthy # Telegraf attendra le statut "healthy" de Mosquitto
     ports:
       - "9273:9273"
     volumes:
@@ -87,7 +95,8 @@ services:
     container_name: simulateur-iot
     restart: unless-stopped
     depends_on:
-      - mosquitto
+      mosquitto:
+        condition: service_healthy # Le simulateur attendra également
     environment:
       - MQTT_HOST=mosquitto
       - MQTT_PORT=1883
@@ -95,6 +104,7 @@ services:
       - INTERVALLE_SECONDES=10
     networks:
       - telemetry-net
+
 
   # =========================================================================
   #  COUCHE SOURCES — APPLICATIF
